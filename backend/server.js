@@ -26,8 +26,13 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
+
+//authprocess
 app.use(express.json());
 app.use('/uploads', express.static('uploads'));
+const cookieParser = require('cookie-parser');
+app.use(cookieParser());
+
 
 // Public routes
 app.use('/api/auth', authRoutes);

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { gsap } from 'gsap';
-import { Clock, Flame, Activity, Heart, DropletIcon } from 'lucide-react';
+import { Clock, Flame, Activity, DropletIcon } from 'lucide-react';
 import './FastingTimer.css';
 
 const FASTING_STAGES = {
@@ -57,7 +57,6 @@ const PRESET_HOURS = [
 ];
 
 const FastingTimer = () => {
-  // Added user preferences
   const [userPreferences, setUserPreferences] = useState(() => {
     const stored = localStorage.getItem('fastingPreferences');
     return stored ? JSON.parse(stored) : {
@@ -85,35 +84,7 @@ const FastingTimer = () => {
   const timerRef = useRef(null);
   const tipsRef = useRef(null);
 
-  // Save preferences when they change
-  useEffect(() => {
-    localStorage.setItem('fastingPreferences', JSON.stringify(userPreferences));
-  }, [userPreferences]);
-
-  // Auto-sync time and handle past sessions
-  useEffect(() => {
-    const lastStartTime = userPreferences.lastStartTime;
-    if (lastStartTime) {
-      const now = Date.now();
-      const elapsedTime = now - lastStartTime;
-      const targetMs = (userPreferences.targetHours || 16) * 3600000;
-
-      if (elapsedTime > 0 && elapsedTime < targetMs) {
-        // Resume existing fast
-        setFastState(prev => ({
-          ...prev,
-          isRunning: true,
-          startTime: lastStartTime,
-          elapsedTime,
-          targetHours: userPreferences.targetHours
-        }));
-      } else if (elapsedTime >= targetMs) {
-        // Clear completed fast
-        setUserPreferences(prev => ({ ...prev, lastStartTime: null }));
-      }
-    }
-  }, []);
-
+  // Memoized utility functions
   const formatTime = useCallback((ms) => {
     if (!ms || ms < 0) return '00:00:00';
     const hours = Math.floor(ms / 3600000);
@@ -125,7 +96,7 @@ const FastingTimer = () => {
   const calculateProgress = useCallback(() => {
     if (!fastState.isRunning) return 0;
     const progress = (fastState.elapsedTime / (fastState.targetHours * 3600000)) * 100;
-    return Math.min(Math.max(0, progress), 100); // Ensure progress stays between 0-100
+    return Math.min(Math.max(0, progress), 100);
   }, [fastState.elapsedTime, fastState.targetHours, fastState.isRunning]);
 
   const getCurrentStage = useCallback((elapsedHours) => {
@@ -149,6 +120,8 @@ const FastingTimer = () => {
   }, []);
 
   const animateProgress = useCallback(() => {
+    if (!progressRef.current || !circleRef.current) return;
+    
     const progress = calculateProgress();
     const duration = 1;
 
@@ -165,37 +138,64 @@ const FastingTimer = () => {
     });
   }, [calculateProgress]);
 
+  // Save preferences
   useEffect(() => {
-    if (fastState.isRunning) {
-      timerRef.current = setInterval(() => {
-        const now = Date.now();
-        setFastState(prev => {
-          const newElapsedTime = now - prev.startTime;
-          
-          // Check if fast is complete
-          if (newElapsedTime >= prev.targetHours * 3600000) {
-            clearInterval(timerRef.current);
-            setUserPreferences(p => ({ ...p, lastStartTime: null }));
-            return {
-              ...prev,
-              isRunning: false,
-              elapsedTime: prev.targetHours * 3600000,
-              caloriesBurned: calculateCalories(prev.targetHours * 3600000),
-              currentStage: getCurrentStage(prev.targetHours)
-            };
-          }
+    localStorage.setItem('fastingPreferences', JSON.stringify(userPreferences));
+  }, [userPreferences]);
 
-          const elapsedHours = newElapsedTime / 3600000;
+  // Initialize or resume fast
+  useEffect(() => {
+    const { lastStartTime, targetHours } = userPreferences;
+    if (!lastStartTime) return;
+
+    const now = Date.now();
+    const elapsedTime = now - lastStartTime;
+    const targetMs = (targetHours || 16) * 3600000;
+
+    if (elapsedTime > 0 && elapsedTime < targetMs) {
+      setFastState(prev => ({
+        ...prev,
+        isRunning: true,
+        startTime: lastStartTime,
+        elapsedTime,
+        targetHours
+      }));
+    } else if (elapsedTime >= targetMs) {
+      setUserPreferences(prev => ({ ...prev, lastStartTime: null }));
+    }
+  }, [userPreferences.lastStartTime, userPreferences.targetHours]);
+
+  // Timer effect
+  useEffect(() => {
+    if (!fastState.isRunning) return;
+
+    timerRef.current = setInterval(() => {
+      const now = Date.now();
+      setFastState(prev => {
+        const newElapsedTime = now - prev.startTime;
+        
+        if (newElapsedTime >= prev.targetHours * 3600000) {
+          clearInterval(timerRef.current);
+          setUserPreferences(p => ({ ...p, lastStartTime: null }));
           return {
             ...prev,
-            elapsedTime: newElapsedTime,
-            caloriesBurned: calculateCalories(newElapsedTime),
-            currentStage: getCurrentStage(elapsedHours)
+            isRunning: false,
+            elapsedTime: prev.targetHours * 3600000,
+            caloriesBurned: calculateCalories(prev.targetHours * 3600000),
+            currentStage: getCurrentStage(prev.targetHours)
           };
-        });
-        animateProgress();
-      }, 1000);
-    }
+        }
+
+        const elapsedHours = newElapsedTime / 3600000;
+        return {
+          ...prev,
+          elapsedTime: newElapsedTime,
+          caloriesBurned: calculateCalories(newElapsedTime),
+          currentStage: getCurrentStage(elapsedHours)
+        };
+      });
+      animateProgress();
+    }, 1000);
 
     return () => {
       if (timerRef.current) {
@@ -204,11 +204,18 @@ const FastingTimer = () => {
     };
   }, [fastState.isRunning, getCurrentStage, calculateCalories, animateProgress]);
 
-  const handleStart = () => {
+  // Ensure selectedDateTime is not in the past
+  useEffect(() => {
+    const now = new Date();
+    if (selectedDateTime < now) {
+      setSelectedDateTime(now);
+    }
+  }, [selectedDateTime]);
+
+  const handleStart = useCallback(() => {
     const now = Date.now();
     const startTime = Math.max(now, selectedDateTime.getTime());
 
-    // Update user preferences
     setUserPreferences(prev => ({
       ...prev,
       targetHours: customHours || fastState.targetHours,
@@ -231,14 +238,12 @@ const FastingTimer = () => {
       duration: 0.5,
       ease: 'back.out'
     });
-  };
+  }, [customHours, fastState.targetHours, selectedDateTime]);
 
-  const handleStop = () => {
+  const handleStop = useCallback(() => {
     if (!window.confirm('Are you sure you want to end your fast?')) return;
 
-    // Clear user preferences
     setUserPreferences(prev => ({ ...prev, lastStartTime: null }));
-
     setFastState(prev => ({
       ...prev,
       isRunning: false,
@@ -258,9 +263,9 @@ const FastingTimer = () => {
         gsap.set(progressRef.current, { strokeDashoffset: 283 });
       }
     });
-  };
+  }, []);
 
-  const handleTargetHoursChange = (value) => {
+  const handleTargetHoursChange = useCallback((value) => {
     setFastState(prev => ({
       ...prev,
       targetHours: value
@@ -269,9 +274,9 @@ const FastingTimer = () => {
       ...prev,
       targetHours: value
     }));
-  };
+  }, []);
 
-  const toggleTips = () => {
+  const toggleTips = useCallback(() => {
     setShowTips(prev => !prev);
     
     gsap.to(tipsRef.current, {
@@ -279,15 +284,7 @@ const FastingTimer = () => {
       duration: 0.5,
       ease: 'power2.inOut'
     });
-  };
-
-  // Ensure selectedDateTime is never in the past
-  useEffect(() => {
-    const now = new Date();
-    if (selectedDateTime < now) {
-      setSelectedDateTime(now);
-    }
-  }, [selectedDateTime]);
+  }, [showTips]);
 
   return (
     <div className="fasting-timer">

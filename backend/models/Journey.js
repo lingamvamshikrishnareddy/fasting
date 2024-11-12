@@ -10,6 +10,11 @@ const journeySchema = new mongoose.Schema({
     type: Date,
     required: true
   },
+  // In your Journey model
+fastId: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: 'Fast'
+},
   endTime: {
     type: Date
   },

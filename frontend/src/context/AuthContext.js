@@ -1,11 +1,21 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../utils/api';
+
+// Development environment check
+if (typeof process === 'undefined') {
+  window.process = { env: { NODE_ENV: 'development' } };
+}
 
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authType, setAuthType] = useState('login');
+  const navigate = useNavigate();
 
   useEffect(() => {
     checkLoggedIn();
@@ -17,10 +27,13 @@ export const AuthProvider = ({ children }) => {
       if (token) {
         const res = await api.get('/auth/user');
         setUser(res.data);
+      } else {
+        setUser(null);
       }
     } catch (error) {
       console.error('Error checking logged in status:', error);
       localStorage.removeItem('token');
+      setUser(null);
     } finally {
       setLoading(false);
     }
@@ -28,38 +41,86 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     try {
+      setError(null);
+      setLoading(true);
       const res = await api.post('/auth/login', { email, password });
       localStorage.setItem('token', res.data.token);
       setUser(res.data.user);
-      return true;
+      setShowAuthModal(false);
+      navigate('/dashboard');
+      return { success: true };
     } catch (error) {
-      console.error('Login error:', error.response?.data?.message || error.message);
-      return false;
+      const errorMessage = error.response?.data?.message || 'An error occurred during login';
+      setError(errorMessage);
+      return { success: false, error: errorMessage };
+    } finally {
+      setLoading(false);
     }
   };
 
-  const register = async (username, email, password) => {
+  const register = async (userData) => {
     try {
-      const res = await api.post('/auth/register', { username, email, password });
+      setError(null);
+      setLoading(true);
+      const res = await api.post('/auth/register', userData);
       localStorage.setItem('token', res.data.token);
       setUser(res.data.user);
-      return true;
+      setShowAuthModal(false);
+      navigate('/dashboard');
+      return { success: true };
     } catch (error) {
-      console.error('Registration error:', error.response?.data?.message || error.message);
-      return false;
+      const errorMessage = error.response?.data?.message || 'An error occurred during registration';
+      setError(errorMessage);
+      return { success: false, error: errorMessage };
+    } finally {
+      setLoading(false);
     }
   };
 
-  const logout = () => {
-    localStorage.removeItem('token');
-    setUser(null);
+  const logout = async () => {
+    try {
+      setLoading(true);
+      await api.post('/auth/logout');
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      localStorage.removeItem('token');
+      setUser(null);
+      navigate('/');
+      setLoading(false);
+    }
+  };
+
+  const toggleAuthModal = (type = 'login') => {
+    setAuthType(type);
+    setShowAuthModal(prev => !prev);
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, loading }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        login,
+        register,
+        logout,
+        loading,
+        error,
+        isAuthenticated: !!user,
+        showAuthModal,
+        authType,
+        toggleAuthModal,
+        setAuthType
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
 };
 
-export const useAuth = () => useContext(AuthContext);
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+};

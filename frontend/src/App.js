@@ -1,42 +1,63 @@
+// App.js
 import React from 'react';
-import { BrowserRouter as Router, Route, Switch } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import PrivateRoute from './components/PrivateRoute';
+
+// Layout Components
 import Header from './components/Header';
-import Login from './pages/Login';
+
+
+// Public Pages
 import HomePage from './components/HomePage';
+import Login from './pages/Login';
 import Register from './pages/Register';
-import Dashboard from './pages/Dashboard'; // Make sure this path is correct
+import HealthBenefits from './pages/HealthBenefits';
+
+// Protected Pages
+import Dashboard from './pages/Dashboard';
 import FastingTimer from './components/FastingTimer';
 import WeightTracker from './components/WeightTracker';
 import YogaExercises from './pages/YogaExercises';
 import BMRCalculator from './components/BMRCalculator';
 import JourneyLog from './pages/JourneyLog';
-import HealthBenefits from './pages/HealthBenefits';
 
+// Styles
 import './styles/index.css';
 
-function App() {
+const App = () => {
   return (
     <AuthProvider>
-      <Router>
+      <div className="min-h-screen flex flex-col">
         <Header />
-        <Switch>
-          <Route exact path="/" component={HomePage} />
-          <Route path="/login" component={Login} />
-          <Route path="/register" component={Register} />
-          <PrivateRoute path="/dashboard" component={Dashboard} />
-          <PrivateRoute path="/fasting-timer" component={FastingTimer} />
-          <PrivateRoute path="/weight-tracker" component={WeightTracker} />
-          <PrivateRoute path="/yoga-exercises" component={YogaExercises} />
-          <PrivateRoute path="/bmr-calculator" component={BMRCalculator} />
-          <PrivateRoute path="/journey-log" component={JourneyLog} />
-          <PrivateRoute path="/health-benefits" component={HealthBenefits} />
-          
-        </Switch>
-      </Router>
+        
+        <main className="flex-grow">
+          <Routes>
+            {/* Public Routes */}
+            <Route path="/" element={<HomePage />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/health-benefits" element={<HealthBenefits />} />
+
+            {/* Protected Routes */}
+            <Route element={<PrivateRoute />}>
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/fasting-timer" element={<FastingTimer />} />
+              <Route path="/weight-tracker" element={<WeightTracker />} />
+              <Route path="/yoga-exercises" element={<YogaExercises />} />
+              <Route path="/bmr-calculator" element={<BMRCalculator />} />
+              <Route path="/journey-log" element={<JourneyLog />} />
+            </Route>
+
+            {/* Catch all route - redirect to home */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </main>
+
+        
+      </div>
     </AuthProvider>
   );
-}
+};
 
 export default App;
