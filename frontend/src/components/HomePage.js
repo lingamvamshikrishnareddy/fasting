@@ -73,38 +73,8 @@ const HomePage = () => {
     navigate('/dashboard');
   };
 
-  const AuthButtons = () => (
-    <div className="auth-buttons">
-      {isAuthenticated ? (
-        <>
-          <Link to="/dashboard" className="nav-link">Dashboard</Link>
-          <button onClick={handleLogout} className="btn btn-primary">
-            Logout
-          </button>
-        </>
-      ) : (
-        <>
-          <Link to="/login" className="btn btn-secondary">
-            Login
-          </Link>
-          <Link to="/register" className="btn btn-primary">
-            Register
-          </Link>
-        </>
-      )}
-    </div>
-  );
-
   return (
     <div className="app">
-      {/* Navigation */}
-      <nav className="navbar">
-        <div className="container">
-          <Link to="/" className="logo">Fastinjoy</Link>
-          <AuthButtons variant="header" />
-        </div>
-      </nav>
-
       {/* Auth Modal */}
       <AuthModal
         isOpen={showModal.isOpen}
@@ -113,19 +83,29 @@ const HomePage = () => {
         onSuccess={handleAuthSuccess}
       />
      
-     {/* Hero Section */}
-     <section className="hero">
+      {/* Hero Section */}
+      <section className="hero">
         <div className="container">
           <h1>Welcome to Fastinjoy</h1>
           <p>Your personal fasting, yoga, and wellness companion</p>
-          {!isAuthenticated && (
-            <Link to="/register" className="btn btn-primary hero-cta">
-              Get Started Now
-            </Link>
-          )}
+          <div className="auth-buttons hero-auth-buttons">
+            {isAuthenticated ? (
+              <button onClick={handleLogout} className="btn btn-primary">
+                Logout
+              </button>
+            ) : (
+              <>
+                <Link to="/login" className="btn btn-secondary">
+                  Login
+                </Link>
+                <Link to="/register" className="btn btn-primary">
+                  Register
+                </Link>
+              </>
+            )}
+          </div>
         </div>
       </section>
-    
 
       {/* Features Section */}
       <section className="features">
@@ -194,7 +174,6 @@ const HomePage = () => {
           )}
         </div>
       </section>
-
 
       {/* Footer */}
       <footer className="footer">
