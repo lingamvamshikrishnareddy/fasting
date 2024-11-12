@@ -1,3 +1,4 @@
+// package.json
 {
     "name": "fasting-app-client",
     "version": "1.0.0",
@@ -21,8 +22,9 @@
         "react-scripts": "4.0.3"
     },
     "scripts": {
-        "start": "cross-env NODE_OPTIONS='--max-old-space-size=512 --openssl-legacy-provider' react-scripts start",
-        "build": "cross-env NODE_OPTIONS='--max-old-space-size=512' react-scripts build",
+        "dev": "react-scripts start",
+        "start": "serve -s build",
+        "build": "GENERATE_SOURCEMAP=false react-scripts build",
         "test": "react-scripts test",
         "eject": "react-scripts eject"
     },
@@ -46,6 +48,46 @@
     },
     "devDependencies": {
         "@babel/plugin-proposal-private-property-in-object": "^7.21.11",
-        "cross-env": "^7.0.3"
+        "cross-env": "^7.0.3",
+        "serve": "^14.2.1"
+    },
+    "engines": {
+        "node": "16.x"
     }
+}
+
+// vercel.json
+{
+    "version": 2,
+    "builds": [
+        {
+            "src": "package.json",
+            "use": "@vercel/static-build",
+            "config": {
+                "distDir": "build"
+            }
+        }
+    ],
+    "routes": [
+        {
+            "src": "/static/(.*)",
+            "dest": "/static/$1"
+        },
+        {
+            "src": "/favicon.ico",
+            "dest": "/favicon.ico"
+        },
+        {
+            "src": "/manifest.json",
+            "dest": "/manifest.json"
+        },
+        {
+            "src": "/robots.txt",
+            "dest": "/robots.txt"
+        },
+        {
+            "src": "/(.*)",
+            "dest": "/index.html"
+        }
+    ]
 }
