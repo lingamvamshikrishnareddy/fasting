@@ -11,6 +11,7 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "prepare": "husky install",
+    "build": "echo 'No build step required'",
     "vercel-build": "npm run build"
   },
   "keywords": [
