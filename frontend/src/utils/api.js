@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const API_URL = process.env.REACT_APP_API_URL || 'https://fasting-git-main-lingamvamshikrishnareddys-projects.vercel.app/api';
 
 // Create axios instance with default config
 const api = axios.create({
@@ -81,71 +81,6 @@ export const logout = () =>
 export const getCurrentUser = () => 
   api.get('/auth/user')
     .catch(error => handleApiError(error, 'Failed to fetch user data'));
-
-// Journey and Fasting synchronized operations
-export const startFast = async (data) => {
-  try {
-    const fastResponse = await api.post('/fasts/start', data);
-    
-    // Create corresponding journey with retry logic
-    let journeyResponse = null;
-    try {
-      journeyResponse = await createJourney({
-        startTime: data.startTime,
-        targetHours: data.targetHours,
-        fastId: fastResponse.data._id // Link journey to fast
-      });
-    } catch (journeyError) {
-      console.error('Failed to create journey, retrying...', journeyError);
-      // Retry journey creation once
-      journeyResponse = await createJourney({
-        startTime: data.startTime,
-        targetHours: data.targetHours,
-        fastId: fastResponse.data._id
-      });
-    }
-
-    return {
-      fast: fastResponse.data,
-      journey: journeyResponse.data
-    };
-  } catch (error) {
-    handleApiError(error, 'Failed to start fast');
-  }
-};
-
-export const endFast = async (fastId) => {
-  try {
-    const fastResponse = await api.put(`/fasts/end/${fastId}`);
-    const journeys = await getUserJourneys();
-    
-    // Find matching journey using fastId or startTime
-    const matchingJourney = journeys.data.find(journey => 
-      journey.fastId === fastId || 
-      new Date(journey.startTime).getTime() === new Date(fastResponse.data.startTime).getTime()
-    );
-
-    if (matchingJourney) {
-      await updateJourney(matchingJourney._id, {
-        endTime: fastResponse.data.endTime,
-        completed: true,
-        duration: new Date(fastResponse.data.endTime) - new Date(matchingJourney.startTime)
-      });
-    }
-
-    return fastResponse;
-  } catch (error) {
-    handleApiError(error, 'Failed to end fast');
-  }
-};
-
-export const getUserFasts = () => 
-  api.get('/fasts/user')
-    .catch(error => handleApiError(error, 'Failed to fetch user fasts'));
-
-export const getCurrentFast = () => 
-  api.get('/fasts/current')
-    .catch(error => handleApiError(error, 'Failed to fetch current fast'));
 
 export const getUserJourneys = () => 
   api.get('/journeys')
