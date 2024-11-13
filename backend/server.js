@@ -17,23 +17,36 @@ const PORT = process.env.PORT || 5000;
 // Connect to the database
 connectDB();
 
-// Configure CORS
+// Updated CORS configuration
 app.use(cors({
-  origin: ['https://fastnjoy-1og5ot44t-lingamvamshikrishnareddys-projects.vercel.app', 'https://fastnjoy.vercel.app'],
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  origin: [
+    'https://fastnjoy-1og5ot44t-lingamvamshikrishnareddys-projects.vercel.app',
+    'https://fastnjoy.vercel.app',
+    'https://fasting-zeta.vercel.app',
+    'http://localhost:3000' // For local development
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
+
+
+// Basic route to test server is running
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'Server is running' });
+});
 
 // Middleware
 app.use(express.json());
-app.use('/uploads', express.static('uploads'));
+app.use(express.urlencoded({ extended: true }));
+
 
 // Cookie parser
 const cookieParser = require('cookie-parser');
 app.use(cookieParser());
 
-// Public routes
-app.use('/api/auth', authRoutes);
+
 
 // Protected routes
 app.use('/api/fasts', authMiddleware, fastRoutes);
@@ -42,7 +55,7 @@ app.use('/api/goals', authMiddleware, goalRoutes);
 app.use('/api/progress', authMiddleware, progressRoutes);
 app.use('/api/dashboard', authMiddleware, dashboardRoutes);
 app.use('/api/journeys', journeyRoutes);
-
+app.use('/api/auth', require('./routes/authRoutes'));
 // Serve the client-side application in production
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, 'client', 'build')));
@@ -54,12 +67,14 @@ if (process.env.NODE_ENV === 'production') {
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error(err.stack);
-  res.status(500).send('Something broke!');
+  res.status(500).json({ 
+    message: 'Something broke!',
+    error: process.env.NODE_ENV === 'development' ? err.message : undefined
+  });
 });
 
-// Start the server
 app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
 
 module.exports = app;
