@@ -1,37 +1,86 @@
-// controllers/authController.js
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 
+// Validation helper
+const validateRegistration = (data) => {
+  const errors = [];
+  
+  if (!data.email || !data.email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
+    errors.push('Valid email is required');
+  }
+  
+  if (!data.password || data.password.length < 6) {
+    errors.push('Password must be at least 6 characters long');
+  }
+  
+  if (!data.username || data.username.length < 3) {
+    errors.push('Username must be at least 3 characters long');
+  }
+  
+  return errors;
+};
+
+// JWT helper
+const generateToken = (userId) => {
+  if (!process.env.JWT_SECRET) {
+    throw new Error('JWT_SECRET environment variable is not set');
+  }
+  
+  return jwt.sign(
+    { id: userId },
+    process.env.JWT_SECRET,
+    { expiresIn: '1d' }
+  );
+};
+
 exports.register = async (req, res) => {
   try {
-    const { username, email, password } = req.body;
-
-    // Check if user exists
-    let user = await User.findOne({ email });
-    if (user) {
-      return res.status(400).json({ message: 'User already exists' });
+    console.log('Registration attempt:', { email: req.body.email, username: req.body.username });
+    
+    // Validate input
+    const validationErrors = validateRegistration(req.body);
+    if (validationErrors.length > 0) {
+      return res.status(400).json({
+        message: 'Validation failed',
+        errors: validationErrors
+      });
     }
 
-    // Create new user
-    const hashedPassword = await bcrypt.hash(password, 12);
-    user = new User({
+    const { username, email, password } = req.body;
+
+    // Check for existing user
+    const existingUser = await User.findOne({
+      $or: [{ email }, { username }]
+    });
+
+    if (existingUser) {
+      return res.status(400).json({
+        message: existingUser.email === email ? 
+          'Email already registered' : 
+          'Username already taken'
+      });
+    }
+
+    // Hash password
+    const salt = await bcrypt.genSalt(12);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    // Create user
+    const user = new User({
       username,
-      email,
+      email: email.toLowerCase(),
       password: hashedPassword
     });
 
     await user.save();
 
-    // Generate JWT token
-    const token = jwt.sign(
-      { id: user._id },
-      process.env.JWT_SECRET,
-      { expiresIn: '1d' }
-    );
+    // Generate token
+    const token = generateToken(user._id);
 
     // Send response
     res.status(201).json({
+      success: true,
       token,
       user: {
         id: user._id,
@@ -39,59 +88,130 @@ exports.register = async (req, res) => {
         email: user.email
       }
     });
+
   } catch (error) {
-    console.error('Registration error:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error('Registration error:', {
+      message: error.message,
+      stack: error.stack,
+      body: req.body
+    });
+
+    // Handle specific MongoDB errors
+    if (error.code === 11000) {
+      return res.status(400).json({
+        message: 'This email or username is already registered'
+      });
+    }
+
+    res.status(500).json({
+      message: 'Registration failed. Please try again later.',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 };
 
 exports.login = async (req, res) => {
   try {
+    console.log('Login attempt:', { email: req.body.email });
+    
     const { email, password } = req.body;
 
-    // Find user
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(400).json({ message: 'Invalid credentials' });
+    // Input validation
+    if (!email || !password) {
+      return res.status(400).json({
+        message: 'Email and password are required'
+      });
     }
 
-    // Check password
+    // Find user
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      return res.status(400).json({
+        message: 'Invalid credentials'
+      });
+    }
+
+    // Verify password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      return res.status(400).json({ message: 'Invalid credentials' });
+      return res.status(400).json({
+        message: 'Invalid credentials'
+      });
     }
 
     // Generate token
-    const token = jwt.sign(
-      { id: user._id },
-      process.env.JWT_SECRET,
-      { expiresIn: '1d' }
-    );
+    const token = generateToken(user._id);
 
-    // Send response
+    // Update last login
+    user.lastLogin = new Date();
+    await user.save();
+
     res.json({
+      success: true,
       token,
       user: {
         id: user._id,
         username: user.username,
-        email: user.email
+        email: user.email,
+        lastLogin: user.lastLogin
       }
     });
+
   } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error('Login error:', {
+      message: error.message,
+      stack: error.stack
+    });
+
+    res.status(500).json({
+      message: 'Login failed. Please try again later.',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 };
 
 exports.getUser = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select('-password');
+    const user = await User.findById(req.user.id)
+      .select('-password')
+      .lean();
+
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(404).json({
+        message: 'User not found'
+      });
     }
-    res.json(user);
+
+    res.json({
+      success: true,
+      user
+    });
+
   } catch (error) {
-    console.error('Get user error:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error('Get user error:', {
+      message: error.message,
+      userId: req.user.id
+    });
+
+    res.status(500).json({
+      message: 'Failed to fetch user data',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+exports.logout = async (req, res) => {
+  try {
+    // Clear any server-side session data if needed
+    res.json({
+      success: true,
+      message: 'Logged out successfully'
+    });
+  } catch (error) {
+    console.error('Logout error:', error);
+    res.status(500).json({
+      message: 'Logout failed',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 };
