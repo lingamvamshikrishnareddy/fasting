@@ -19,23 +19,21 @@ const dashboardRoutes = require('./routes/dashboardRoutes');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Connect to the database
-connectDB();
-
-// CORS Configuration
+// CORS configuration
 const allowedOrigins = [
   'https://fastnjoy.vercel.app',
   'http://localhost:3000',
+  'https://fasting-zeta.vercel.app',
   ...process.env.ADDITIONAL_ORIGINS ? process.env.ADDITIONAL_ORIGINS.split(',') : []
 ];
 
 const corsOptions = {
-  origin: function(origin, callback) {
+  origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
-    
-    // Allow any Vercel preview URLs and explicitly allowed origins
-    if (allowedOrigins.includes(origin) || origin.includes('vercel.app')) {
+
+    // Allow origins in the allowed list or from Vercel preview URLs
+    if (allowedOrigins.includes(origin) || origin.includes('vercel.app') || origin.includes('localhost')) {
       callback(null, true);
     } else {
       callback(new Error(`Origin ${origin} not allowed by CORS`));
@@ -44,18 +42,32 @@ const corsOptions = {
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
-  exposedHeaders: ['set-cookie'],
-  preflightContinue: false,
+  exposedHeaders: ['Set-Cookie', 'Authorization'],
   optionsSuccessStatus: 204
 };
 
-// Middleware
+// Apply CORS and other middlewares
 app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// Global error handler for parsing JSON
+// Connect to the database
+connectDB();
+
+// Add headers middleware for additional CORS handling
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin) || origin?.includes('vercel.app')) {
+    res.header('Access-Control-Allow-Origin', origin);
+  }
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  next();
+});
+
+// Global error handler for JSON parsing errors
 app.use((err, req, res, next) => {
   if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
     return res.status(400).json({ 
