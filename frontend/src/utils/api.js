@@ -2,16 +2,29 @@ import axios from 'axios';
 
 const API_URL = process.env.REACT_APP_API_URL || 'https://fasting-zeta.vercel.app/api';
 
-// Custom error class for API errors
+// Custom error class for API errors with additional context
 class APIError extends Error {
-  constructor(message, status, code) {
+  constructor(message, status, code, details = {}) {
     super(message);
     this.name = 'APIError';
     this.status = status;
     this.code = code;
+    this.details = details;
+    this.timestamp = new Date().toISOString();
   }
 }
 
+// Error codes mapping for consistent error handling
+const ERROR_CODES = {
+  NETWORK_ERROR: 'NETWORK_ERROR',
+  AUTH_ERROR: 'AUTH_ERROR',
+  TIMEOUT_ERROR: 'TIMEOUT_ERROR',
+  VALIDATION_ERROR: 'VALIDATION_ERROR',
+  SERVER_ERROR: 'SERVER_ERROR',
+  UNKNOWN_ERROR: 'UNKNOWN_ERROR'
+};
+
+// Create axios instance with default config
 const api = axios.create({
   baseURL: API_URL,
   headers: {
@@ -21,43 +34,60 @@ const api = axios.create({
   withCredentials: true,
 });
 
-// Request interceptor with enhanced error logging
+// Development environment logger
+const devLogger = {
+  log: (...args) => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log(...args);
+    }
+  },
+  error: (...args) => {
+    if (process.env.NODE_ENV === 'development') {
+      console.error(...args);
+    }
+  }
+};
+
+// Request interceptor with enhanced logging and error handling
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
     if (token) {
       config.headers['Authorization'] = `Bearer ${token}`;
     }
-    // Log outgoing requests in development
-    if (process.env.NODE_ENV === 'development') {
-      console.log('🚀 Request:', {
-        url: config.url,
-        method: config.method,
-        headers: config.headers,
-      });
-    }
+    
+    devLogger.log('🚀 Request:', {
+      url: config.url,
+      method: config.method,
+      headers: config.headers,
+    });
+    
     return config;
   },
   (error) => {
-    console.error('📡 Request configuration error:', {
+    devLogger.error('📡 Request configuration error:', {
       message: error.message,
       stack: error.stack,
     });
-    return Promise.reject(error);
+    return Promise.reject(
+      new APIError(
+        'Failed to setup request',
+        0,
+        ERROR_CODES.UNKNOWN_ERROR,
+        { originalError: error }
+      )
+    );
   }
 );
 
 // Response interceptor with comprehensive error handling
 api.interceptors.response.use(
   (response) => {
-    // Log successful responses in development
-    if (process.env.NODE_ENV === 'development') {
-      console.log('✅ Response:', {
-        status: response.status,
-        url: response.config.url,
-        method: response.config.method,
-      });
-    }
+    devLogger.log('✅ Response:', {
+      status: response.status,
+      url: response.config.url,
+      method: response.config.method,
+    });
     return response;
   },
   async (error) => {
@@ -65,46 +95,77 @@ api.interceptors.response.use(
 
     // Handle network errors and CORS issues
     if (error.message === 'Network Error' || error.code === 'ERR_NETWORK') {
-      console.error('🔴 Network/CORS Error:', {
+      devLogger.error('🔴 Network/CORS Error:', {
         message: error.message,
         code: error.code,
         config: {
           url: originalRequest.url,
           method: originalRequest.method,
-          headers: originalRequest.headers,
         },
       });
+      
       throw new APIError(
-        'Unable to connect to the server. Please check your internet connection and try again.',
+        'Unable to connect to the server. Please check your internet connection.',
         0,
-        'NETWORK_ERROR'
+        ERROR_CODES.NETWORK_ERROR,
+        { originalError: error }
       );
     }
 
     // Handle timeout errors
     if (error.code === 'ECONNABORTED') {
-      console.error('⏰ Request timeout:', {
+      devLogger.error('⏰ Request timeout:', {
         url: originalRequest.url,
         timeout: originalRequest.timeout,
       });
+      
       throw new APIError(
         'Request timed out. Please try again.',
         0,
-        'TIMEOUT_ERROR'
+        ERROR_CODES.TIMEOUT_ERROR,
+        { originalError: error }
       );
     }
 
-    // Handle authentication errors
+    // Handle authentication errors with automatic redirect
     if (error.response?.status === 401 && !originalRequest._retry) {
-      console.warn('🔑 Authentication failed, redirecting to login');
-      originalRequest._retry = true;
+      devLogger.warn('🔑 Authentication failed, redirecting to login');
       localStorage.removeItem('token');
-      window.location = '/login';
-      throw new APIError('Session expired. Please log in again.', 401, 'AUTH_ERROR');
+      
+      // Allow for custom redirect handling
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('auth:expired'));
+        window.location = '/login';
+      }
+      
+      throw new APIError(
+        'Session expired. Please log in again.',
+        401,
+        ERROR_CODES.AUTH_ERROR
+      );
     }
 
-    // Log other errors with detailed information
-    console.error('❌ API Error:', {
+    // Handle validation errors
+    if (error.response?.status === 422) {
+      throw new APIError(
+        'Validation failed. Please check your input.',
+        422,
+        ERROR_CODES.VALIDATION_ERROR,
+        { validationErrors: error.response.data.errors }
+      );
+    }
+
+    // Handle server errors
+    if (error.response?.status >= 500) {
+      throw new APIError(
+        'Server error. Please try again later.',
+        error.response.status,
+        ERROR_CODES.SERVER_ERROR,
+        { serverError: error.response.data }
+      );
+    }
+
+    devLogger.error('❌ API Error:', {
       status: error.response?.status,
       data: error.response?.data,
       url: originalRequest.url,
@@ -116,13 +177,23 @@ api.interceptors.response.use(
   }
 );
 
-// Enhanced error handler with retry capability
-const handleApiError = async (error, customMessage, retryCount = 1) => {
+// Enhanced error handler with retry capability and backoff
+const handleApiError = async (error, customMessage, options = {}) => {
+  const {
+    retryCount = 1,
+    retryDelay = 1000,
+    shouldRetry = (error) => error.response?.status >= 500
+  } = options;
+
   const retry = async (attempt = 0) => {
     try {
       if (attempt >= retryCount) throw error;
-      console.log(`🔄 Retrying request (${attempt + 1}/${retryCount})`);
-      const response = await error.config;
+      
+      const delay = retryDelay * Math.pow(2, attempt); // Exponential backoff
+      devLogger.log(`🔄 Retrying request (${attempt + 1}/${retryCount}) after ${delay}ms`);
+      
+      await new Promise(resolve => setTimeout(resolve, delay));
+      const response = await axios(error.config);
       return response;
     } catch (retryError) {
       if (attempt + 1 < retryCount) return retry(attempt + 1);
@@ -130,78 +201,68 @@ const handleApiError = async (error, customMessage, retryCount = 1) => {
     }
   };
 
-  if (error.response?.status >= 500 && retryCount > 0) {
+  if (shouldRetry(error) && retryCount > 0) {
     return retry();
   }
 
   const errorMessage = error.response?.data?.message || error.message || customMessage;
-  throw new APIError(errorMessage, error.response?.status, error.code);
+  throw new APIError(
+    errorMessage,
+    error.response?.status,
+    error.code || ERROR_CODES.UNKNOWN_ERROR,
+    { originalError: error }
+  );
 };
 
-// Auth endpoints
-export const register = (userData) => 
-  api.post('/auth/register', userData)
-    .catch(error => handleApiError(error, 'Registration failed'));
-
-export const login = (credentials) => 
-  api.post('/auth/login', credentials)
-    .catch(error => handleApiError(error, 'Login failed'));
-
-export const logout = () => 
-  api.post('/auth/logout')
-    .catch(error => handleApiError(error, 'Logout failed'));
-
-export const getCurrentUser = () => 
-  api.get('/auth/user')
-    .catch(error => handleApiError(error, 'Failed to fetch user data'));
-
-// Journey endpoints
-export const getUserJourneys = () => 
-  api.get('/journeys')
-    .catch(error => handleApiError(error, 'Failed to fetch user journeys'));
-
-export const createJourney = (journeyData) => 
-  api.post('/journeys', journeyData)
-    .catch(error => handleApiError(error, 'Failed to create journey'));
-
-export const updateJourney = (id, journeyData) => 
-  api.put(`/journeys/${id}`, journeyData)
-    .catch(error => handleApiError(error, 'Failed to update journey'));
-
-// Fast tracking endpoints
-export const getUserFasts = () => 
-  api.get('/fasts/user')
-    .catch(error => handleApiError(error, 'Failed to fetch user fasts'));
-
-export const createFast = (fastData) => 
-  api.post('/fasts', fastData)
-    .catch(error => handleApiError(error, 'Failed to create fast'));
-
-export const updateFast = (id, fastData) => 
-  api.put(`/fasts/${id}`, fastData)
-    .catch(error => handleApiError(error, 'Failed to update fast'));
-
-export const deleteFast = (id) => 
-  api.delete(`/fasts/${id}`)
-    .catch(error => handleApiError(error, 'Failed to delete fast'));
-
-// Weight tracking endpoints
-export const addWeight = (data) => 
-  api.post('/weights/add', data)
-    .catch(error => handleApiError(error, 'Failed to add weight'));
-
-export const getUserWeights = () => 
-  api.get('/weights/user')
-    .catch(error => handleApiError(error, 'Failed to fetch user weights'));
-
-// Dashboard endpoints with retry logic
-export const getDashboardStats = async () => {
+// API endpoints with consistent error handling
+const createEndpoint = (method, path, errorMessage) => async (data, config = {}) => {
   try {
-    const response = await api.get('/dashboard/stats');
+    const response = await api[method](path, data, config);
     return response.data;
   } catch (error) {
-    return handleApiError(error, 'Failed to fetch dashboard stats', 2); // Retry twice
+    return handleApiError(error, errorMessage, config.retryOptions);
   }
 };
 
-export default api;
+// Auth endpoints
+export const auth = {
+  register: createEndpoint('post', '/auth/register', 'Registration failed'),
+  login: createEndpoint('post', '/auth/login', 'Login failed'),
+  logout: createEndpoint('post', '/auth/logout', 'Logout failed'),
+  getCurrentUser: createEndpoint('get', '/auth/user', 'Failed to fetch user data')
+};
+
+// Journey endpoints
+export const journeys = {
+  getAll: createEndpoint('get', '/journeys', 'Failed to fetch user journeys'),
+  create: createEndpoint('post', '/journeys', 'Failed to create journey'),
+  update: (id, data) => createEndpoint('put', `/journeys/${id}`, 'Failed to update journey')(data),
+  delete: (id) => createEndpoint('delete', `/journeys/${id}`, 'Failed to delete journey')()
+};
+
+// Fast tracking endpoints
+export const fasts = {
+  getAll: createEndpoint('get', '/fasts/user', 'Failed to fetch user fasts'),
+  create: createEndpoint('post', '/fasts', 'Failed to create fast'),
+  update: (id, data) => createEndpoint('put', `/fasts/${id}`, 'Failed to update fast')(data),
+  delete: (id) => createEndpoint('delete', `/fasts/${id}`, 'Failed to delete fast')()
+};
+
+// Weight tracking endpoints
+export const weights = {
+  add: createEndpoint('post', '/weights/add', 'Failed to add weight'),
+  getAll: createEndpoint('get', '/weights/user', 'Failed to fetch user weights')
+};
+
+// Dashboard endpoints with enhanced retry options
+export const dashboard = {
+  getStats: createEndpoint('get', '/dashboard/stats', 'Failed to fetch dashboard stats', {
+    retryOptions: {
+      retryCount: 2,
+      retryDelay: 1000,
+      shouldRetry: (error) => error.response?.status >= 500
+    }
+  })
+};
+
+export { api as default, APIError, ERROR_CODES };
