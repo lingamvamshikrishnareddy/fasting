@@ -2,7 +2,11 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const path = require('path');
+const cookieParser = require('cookie-parser');
 const connectDB = require('./config/db');
+const authMiddleware = require('./middleware/authMiddleware');
+
+// Import routes
 const authRoutes = require('./routes/authRoutes');
 const fastRoutes = require('./routes/fastRoutes');
 const weightRoutes = require('./routes/weightRoutes');
@@ -10,55 +14,68 @@ const journeyRoutes = require('./routes/journeyRoutes');
 const goalRoutes = require('./routes/goalRoutes');
 const progressRoutes = require('./routes/progressRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
-const authMiddleware = require('./middleware/authMiddleware');
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Connect to the database
 connectDB();
 
-// Updated CORS configuration
-app.use(cors({
+// CORS Configuration
+const corsOptions = {
   origin: [
-    'https://fastnjoy-1og5ot44t-lingamvamshikrishnareddys-projects.vercel.app',
     'https://fastnjoy.vercel.app',
+    'https://fastnjoy-8nnuhzv4u-lingamvamshikrishnareddys-projects.vercel.app',
+    'https://fastnjoy-1og5ot44t-lingamvamshikrishnareddys-projects.vercel.app',
     'https://fasting-zeta.vercel.app',
-    'http://localhost:3000' // For local development
-  ],
+    process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : null
+  ].filter(Boolean),
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  exposedHeaders: ['set-cookie'],
+  preflightContinue: false,
+  optionsSuccessStatus: 204
+};
 
+// Apply CORS middleware
+app.use(cors(corsOptions));
 
-
-// Basic route to test server is running
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'Server is running' });
+// Additional CORS headers middleware
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (corsOptions.origin.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  next();
 });
 
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-
-// Cookie parser
-const cookieParser = require('cookie-parser');
 app.use(cookieParser());
 
+// Health check route
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'Server is running' });
+});
 
-
-// Protected routes
+// Protected API routes
+app.use('/api/auth', authRoutes);
 app.use('/api/fasts', authMiddleware, fastRoutes);
 app.use('/api/weights', authMiddleware, weightRoutes);
 app.use('/api/goals', authMiddleware, goalRoutes);
 app.use('/api/progress', authMiddleware, progressRoutes);
 app.use('/api/dashboard', authMiddleware, dashboardRoutes);
 app.use('/api/journeys', journeyRoutes);
-app.use('/api/auth', require('./routes/authRoutes'));
-// Serve the client-side application in production
+
+// Serve static files in production
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, 'client', 'build')));
+  
   app.get('*', (req, res) => {
     res.sendFile(path.resolve(__dirname, 'client', 'build', 'index.html'));
   });
@@ -73,6 +90,7 @@ app.use((err, req, res, next) => {
   });
 });
 
+// Start server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
