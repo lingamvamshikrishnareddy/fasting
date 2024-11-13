@@ -5,6 +5,7 @@ const path = require('path');
 const cookieParser = require('cookie-parser');
 const connectDB = require('./config/db');
 const authMiddleware = require('./middleware/authMiddleware');
+require('dotenv').config();
 
 // Import routes
 const authRoutes = require('./routes/authRoutes');
@@ -22,63 +23,60 @@ const PORT = process.env.PORT || 5000;
 connectDB();
 
 // CORS Configuration
+const allowedOrigins = [
+  'https://fastnjoy.vercel.app',
+  'http://localhost:3000',
+  ...process.env.ADDITIONAL_ORIGINS ? process.env.ADDITIONAL_ORIGINS.split(',') : []
+];
+
 const corsOptions = {
-  origin: [
-    'https://fastnjoy.vercel.app',
-    'https://fastnjoy-8nnuhzv4u-lingamvamshikrishnareddys-projects.vercel.app',
-    'https://fastnjoy-1og5ot44t-lingamvamshikrishnareddys-projects.vercel.app',
-    'https://fasting-zeta.vercel.app',
-    process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : null
-  ].filter(Boolean),
+  origin: function(origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    // Allow any Vercel preview URLs and explicitly allowed origins
+    if (allowedOrigins.includes(origin) || origin.includes('vercel.app')) {
+      callback(null, true);
+    } else {
+      callback(new Error(`Origin ${origin} not allowed by CORS`));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
   exposedHeaders: ['set-cookie'],
   preflightContinue: false,
   optionsSuccessStatus: 204
 };
 
-// Apply CORS middleware
-app.use(cors(corsOptions));
-
-// Additional CORS headers middleware
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  if (corsOptions.origin.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-  }
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  next();
-});
-
-// Add this to your server.js for better error tracking
-app.use((err, req, res, next) => {
-  console.error('Error details:', {
-    message: err.message,
-    stack: err.stack,
-    path: req.path,
-    body: req.body
-  });
-  
-  res.status(500).json({
-    message: 'Server error occurred',
-    error: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error'
-  });
-});
-
 // Middleware
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// Health check route
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'Server is running' });
+// Global error handler for parsing JSON
+app.use((err, req, res, next) => {
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    return res.status(400).json({ 
+      status: 'error',
+      message: 'Invalid JSON payload',
+      details: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
+  }
+  next(err);
 });
 
-// Protected API routes
+// Health check route
+app.get('/api/health', (req, res) => {
+  res.json({ 
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV
+  });
+});
+
+// API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/fasts', authMiddleware, fastRoutes);
 app.use('/api/weights', authMiddleware, weightRoutes);
@@ -90,18 +88,42 @@ app.use('/api/journeys', journeyRoutes);
 // Serve static files in production
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, 'client', 'build')));
-  
   app.get('*', (req, res) => {
     res.sendFile(path.resolve(__dirname, 'client', 'build', 'index.html'));
   });
 }
 
+// Global error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Error details:', {
+    message: err.message,
+    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
+    path: req.path,
+    method: req.method,
+    body: process.env.NODE_ENV === 'development' ? req.body : undefined,
+    timestamp: new Date().toISOString()
+  });
 
+  // Handle CORS errors
+  if (err.message && err.message.includes('not allowed by CORS')) {
+    return res.status(403).json({
+      status: 'error',
+      message: 'CORS origin not allowed',
+      allowedOrigins: process.env.NODE_ENV === 'development' ? allowedOrigins : undefined
+    });
+  }
 
+  // Handle other errors
+  res.status(err.status || 500).json({
+    status: 'error',
+    message: err.message || 'Internal server error',
+    details: process.env.NODE_ENV === 'development' ? err.stack : undefined
+  });
+});
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`Server running on port ${PORT} in ${process.env.NODE_ENV || 'development'} mode`);
 });
 
 module.exports = app;
