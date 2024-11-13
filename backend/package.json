@@ -7,7 +7,7 @@
     "start": "node server.js",
     "dev": "nodemon server.js",
     "debug": "nodemon --inspect server.js",
-    "proxy": "https://fasting-zeta.vercel.app",
+ 
     "test": "jest",
     "lint": "eslint .",
     "format": "prettier --write .",
