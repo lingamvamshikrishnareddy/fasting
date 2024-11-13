@@ -25,14 +25,21 @@ export const AuthProvider = ({ children }) => {
     try {
       const token = localStorage.getItem('token');
       if (token) {
+        // Set the token in the authorization header
+        api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
         const res = await api.get('/auth/user');
-        setUser(res.data);
+        if (res.data) {
+          setUser(res.data);
+        } else {
+          throw new Error('No user data received');
+        }
       } else {
         setUser(null);
       }
     } catch (error) {
       console.error('Error checking logged in status:', error);
       localStorage.removeItem('token');
+      delete api.defaults.headers.common['Authorization'];
       setUser(null);
     } finally {
       setLoading(false);
@@ -43,14 +50,32 @@ export const AuthProvider = ({ children }) => {
     try {
       setError(null);
       setLoading(true);
-      const res = await api.post('/auth/login', { email, password });
-      localStorage.setItem('token', res.data.token);
-      setUser(res.data.user);
-      setShowAuthModal(false);
-      navigate('/dashboard');
-      return { success: true };
+
+      // Validate input
+      if (!email || !password) {
+        throw new Error('Email and password are required');
+      }
+
+      const response = await api.post('/auth/login', {
+        email: email.trim().toLowerCase(),
+        password: password
+      });
+
+      if (response.data && response.data.token) {
+        localStorage.setItem('token', response.data.token);
+        api.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`;
+        setUser(response.data.user);
+        setShowAuthModal(false);
+        navigate('/dashboard');
+        return { success: true };
+      } else {
+        throw new Error('Invalid response from server');
+      }
     } catch (error) {
-      const errorMessage = error.response?.data?.message || 'An error occurred during login';
+      console.error('Login error:', error);
+      const errorMessage = error.response?.data?.message || 
+                          error.message || 
+                          'An error occurred during login';
       setError(errorMessage);
       return { success: false, error: errorMessage };
     } finally {
@@ -62,14 +87,36 @@ export const AuthProvider = ({ children }) => {
     try {
       setError(null);
       setLoading(true);
-      const res = await api.post('/auth/register', userData);
-      localStorage.setItem('token', res.data.token);
-      setUser(res.data.user);
-      setShowAuthModal(false);
-      navigate('/dashboard');
-      return { success: true };
+
+      // Validate input
+      if (!userData.email || !userData.password || !userData.username) {
+        throw new Error('All fields are required');
+      }
+
+      // Format the data
+      const formattedData = {
+        email: userData.email.trim().toLowerCase(),
+        password: userData.password,
+        username: userData.username.trim()
+      };
+
+      const response = await api.post('/auth/register', formattedData);
+
+      if (response.data && response.data.token) {
+        localStorage.setItem('token', response.data.token);
+        api.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`;
+        setUser(response.data.user);
+        setShowAuthModal(false);
+        navigate('/dashboard');
+        return { success: true };
+      } else {
+        throw new Error('Invalid response from server');
+      }
     } catch (error) {
-      const errorMessage = error.response?.data?.message || 'An error occurred during registration';
+      console.error('Registration error:', error);
+      const errorMessage = error.response?.data?.message || 
+                          error.message || 
+                          'An error occurred during registration';
       setError(errorMessage);
       return { success: false, error: errorMessage };
     } finally {
@@ -85,33 +132,37 @@ export const AuthProvider = ({ children }) => {
       console.error('Logout error:', error);
     } finally {
       localStorage.removeItem('token');
+      delete api.defaults.headers.common['Authorization'];
       setUser(null);
+      setShowAuthModal(false);
       navigate('/');
       setLoading(false);
     }
   };
 
   const toggleAuthModal = (type = 'login') => {
+    setError(null); // Clear any previous errors
     setAuthType(type);
     setShowAuthModal(prev => !prev);
   };
 
+  const value = {
+    user,
+    login,
+    register,
+    logout,
+    loading,
+    error,
+    isAuthenticated: !!user,
+    showAuthModal,
+    authType,
+    toggleAuthModal,
+    setAuthType,
+    setError // Expose setError to clear errors when needed
+  };
+
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        login,
-        register,
-        logout,
-        loading,
-        error,
-        isAuthenticated: !!user,
-        showAuthModal,
-        authType,
-        toggleAuthModal,
-        setAuthType
-      }}
-    >
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
@@ -124,3 +175,5 @@ export const useAuth = () => {
   }
   return context;
 };
+
+export default AuthContext;
