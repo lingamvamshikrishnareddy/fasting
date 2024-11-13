@@ -1,18 +1,17 @@
 import axios from 'axios';
 
-const API_URL = process.env.REACT_APP_API_URL || 'https://fasting-git-main-lingamvamshikrishnareddys-projects.vercel.app/api';
+const API_URL = process.env.REACT_APP_API_URL || 'https://fasting-zeta.vercel.app/api';
 
-// Create axios instance with default config
 const api = axios.create({
   baseURL: API_URL,
   headers: {
     'Content-Type': 'application/json'
   },
-  // Add timeout to prevent hanging requests
-  timeout: 10000
+  timeout: 15000,
+  withCredentials: true // Enable credentials
 });
 
-// Request interceptor with error handling
+// Updated interceptors with better error handling
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
@@ -22,41 +21,28 @@ api.interceptors.request.use(
     return config;
   },
   (error) => {
-    console.error('Request interceptor error:', error);
+    console.error('Request error:', error);
     return Promise.reject(error);
   }
 );
 
-// Response interceptor with enhanced error handling
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
+    const originalRequest = error.config;
+
     if (error.response) {
-      switch (error.response.status) {
-        case 401:
-          localStorage.removeItem('token');
-          window.location = '/login';
-          break;
-        case 403:
-          console.error('Forbidden access:', error.response.data);
-          break;
-        case 404:
-          console.error('Resource not found:', error.response.data);
-          break;
-        case 500:
-          console.error('Server error:', error.response.data);
-          break;
-        default:
-          console.error('API error:', error.response.data);
+      if (error.response.status === 401 && !originalRequest._retry) {
+        originalRequest._retry = true;
+        localStorage.removeItem('token');
+        window.location = '/login';
+        return Promise.reject(error);
       }
-    } else if (error.request) {
-      console.error('No response received:', error.request);
-    } else {
-      console.error('Request setup error:', error.message);
     }
     return Promise.reject(error);
   }
 );
+
 
 // Helper function to handle API errors
 const handleApiError = (error, customMessage) => {
