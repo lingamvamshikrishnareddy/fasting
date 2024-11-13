@@ -53,6 +53,21 @@ app.use((req, res, next) => {
   next();
 });
 
+// Add this to your server.js for better error tracking
+app.use((err, req, res, next) => {
+  console.error('Error details:', {
+    message: err.message,
+    stack: err.stack,
+    path: req.path,
+    body: req.body
+  });
+  
+  res.status(500).json({
+    message: 'Server error occurred',
+    error: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error'
+  });
+});
+
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -81,14 +96,8 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ 
-    message: 'Something broke!',
-    error: process.env.NODE_ENV === 'development' ? err.message : undefined
-  });
-});
+
+
 
 // Start server
 app.listen(PORT, () => {
