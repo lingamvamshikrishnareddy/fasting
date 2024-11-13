@@ -1,4 +1,3 @@
-// controllers/authController.js
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
@@ -35,9 +34,11 @@ const generateToken = (userId) => {
   );
 };
 
-// Export individual functions instead of an object
-module.exports.register = async (req, res) => {
+const register = async (req, res) => {
   try {
+    console.log('Registration attempt:', { email: req.body.email, username: req.body.username });
+    
+    // Validate input
     const validationErrors = validateRegistration(req.body);
     if (validationErrors.length > 0) {
       return res.status(400).json({
@@ -48,6 +49,7 @@ module.exports.register = async (req, res) => {
 
     const { username, email, password } = req.body;
 
+    // Check for existing user
     const existingUser = await User.findOne({
       $or: [{ email }, { username }]
     });
@@ -60,9 +62,11 @@ module.exports.register = async (req, res) => {
       });
     }
 
+    // Hash password
     const salt = await bcrypt.genSalt(12);
     const hashedPassword = await bcrypt.hash(password, salt);
 
+    // Create user
     const user = new User({
       username,
       email: email.toLowerCase(),
@@ -71,8 +75,10 @@ module.exports.register = async (req, res) => {
 
     await user.save();
 
+    // Generate token
     const token = generateToken(user._id);
 
+    // Send response
     res.status(201).json({
       success: true,
       token,
@@ -84,7 +90,19 @@ module.exports.register = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Registration error:', error);
+    console.error('Registration error:', {
+      message: error.message,
+      stack: error.stack,
+      body: req.body
+    });
+
+    // Handle specific MongoDB errors
+    if (error.code === 11000) {
+      return res.status(400).json({
+        message: 'This email or username is already registered'
+      });
+    }
+
     res.status(500).json({
       message: 'Registration failed. Please try again later.',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
@@ -92,16 +110,20 @@ module.exports.register = async (req, res) => {
   }
 };
 
-module.exports.login = async (req, res) => {
+const login = async (req, res) => {
   try {
+    console.log('Login attempt:', { email: req.body.email });
+    
     const { email, password } = req.body;
 
+    // Input validation
     if (!email || !password) {
       return res.status(400).json({
         message: 'Email and password are required'
       });
     }
 
+    // Find user
     const user = await User.findOne({ email: email.toLowerCase() });
     if (!user) {
       return res.status(400).json({
@@ -109,6 +131,7 @@ module.exports.login = async (req, res) => {
       });
     }
 
+    // Verify password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(400).json({
@@ -116,8 +139,10 @@ module.exports.login = async (req, res) => {
       });
     }
 
+    // Generate token
     const token = generateToken(user._id);
 
+    // Update last login
     user.lastLogin = new Date();
     await user.save();
 
@@ -133,7 +158,11 @@ module.exports.login = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Login error:', error);
+    console.error('Login error:', {
+      message: error.message,
+      stack: error.stack
+    });
+
     res.status(500).json({
       message: 'Login failed. Please try again later.',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
@@ -141,9 +170,11 @@ module.exports.login = async (req, res) => {
   }
 };
 
-module.exports.getUser = async (req, res) => {
+const getUser = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select('-password').lean();
+    const user = await User.findById(req.user.id)
+      .select('-password')
+      .lean();
 
     if (!user) {
       return res.status(404).json({
@@ -157,7 +188,11 @@ module.exports.getUser = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Get user error:', error);
+    console.error('Get user error:', {
+      message: error.message,
+      userId: req.user.id
+    });
+
     res.status(500).json({
       message: 'Failed to fetch user data',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
@@ -165,8 +200,9 @@ module.exports.getUser = async (req, res) => {
   }
 };
 
-module.exports.logout = async (req, res) => {
+const logout = async (req, res) => {
   try {
+    // Clear any server-side session data if needed
     res.json({
       success: true,
       message: 'Logged out successfully'
@@ -178,4 +214,11 @@ module.exports.logout = async (req, res) => {
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
+};
+
+module.exports = {
+  register,
+  login,
+  getUser,
+  logout
 };
