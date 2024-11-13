@@ -2,33 +2,24 @@ const jwt = require('jsonwebtoken');
 
 const authMiddleware = (req, res, next) => {
   try {
-    // Get token from header
     const token = req.header('Authorization')?.replace('Bearer ', '');
-
-    // Check if token exists
+    
     if (!token) {
       return res.status(401).json({ message: 'No token, authorization denied' });
     }
 
-    // Verify token
     if (!process.env.JWT_SECRET) {
-      console.error('JWT Secret is not set in environment variables');
-      return res.status(500).json({ message: 'Server configuration error' });
+      throw new Error('JWT_SECRET not configured');
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.user = decoded;
     next();
   } catch (err) {
+    console.error('Auth middleware error:', err);
     if (err.name === 'TokenExpiredError') {
-      return res.status(401).json({ message: 'Token has expired' });
-    } else if (err.name === 'JsonWebTokenError') {
-      return res.status(401).json({ message: 'Invalid token' });
-    } else {
-      console.error('Unexpected token error:', err);
-      return res.status(500).json({ message: 'Server error while validating token' });
+      return res.status(401).json({ message: 'Token expired' });
     }
+    return res.status(401).json({ message: 'Invalid token' });
   }
 };
-
-module.exports = authMiddleware;
