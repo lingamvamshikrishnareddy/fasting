@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import * as api from '../utils/api';
+import { getUserFasts } from '../utils/api';
 
 function JourneyLog() {
   const [fasts, setFasts] = useState([]);
