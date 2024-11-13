@@ -8,10 +8,10 @@ const api = axios.create({
     'Content-Type': 'application/json'
   },
   timeout: 15000,
-  withCredentials: true // Enable credentials
+  withCredentials: true
 });
 
-// Updated interceptors with better error handling
+// Request interceptor
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
@@ -26,11 +26,11 @@ api.interceptors.request.use(
   }
 );
 
+// Response interceptor
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
-
     if (error.response) {
       if (error.response.status === 401 && !originalRequest._retry) {
         originalRequest._retry = true;
@@ -43,15 +43,14 @@ api.interceptors.response.use(
   }
 );
 
-
-// Helper function to handle API errors
+// Error handler
 const handleApiError = (error, customMessage) => {
   const errorMessage = error.response?.data?.message || error.message || customMessage;
   console.error(customMessage, error);
   throw new Error(errorMessage);
 };
 
-// Authentication endpoints
+// Auth endpoints
 export const register = (userData) => 
   api.post('/auth/register', userData)
     .catch(error => handleApiError(error, 'Registration failed'));
@@ -68,6 +67,7 @@ export const getCurrentUser = () =>
   api.get('/auth/user')
     .catch(error => handleApiError(error, 'Failed to fetch user data'));
 
+// Journey endpoints
 export const getUserJourneys = () => 
   api.get('/journeys')
     .catch(error => handleApiError(error, 'Failed to fetch user journeys'));
@@ -80,7 +80,24 @@ export const updateJourney = (id, journeyData) =>
   api.put(`/journeys/${id}`, journeyData)
     .catch(error => handleApiError(error, 'Failed to update journey'));
 
-// Weight tracking
+// Fast tracking endpoints
+export const getUserFasts = () => 
+  api.get('/fasts/user')
+    .catch(error => handleApiError(error, 'Failed to fetch user fasts'));
+
+export const createFast = (fastData) => 
+  api.post('/fasts', fastData)
+    .catch(error => handleApiError(error, 'Failed to create fast'));
+
+export const updateFast = (id, fastData) => 
+  api.put(`/fasts/${id}`, fastData)
+    .catch(error => handleApiError(error, 'Failed to update fast'));
+
+export const deleteFast = (id) => 
+  api.delete(`/fasts/${id}`)
+    .catch(error => handleApiError(error, 'Failed to delete fast'));
+
+// Weight tracking endpoints
 export const addWeight = (data) => 
   api.post('/weights/add', data)
     .catch(error => handleApiError(error, 'Failed to add weight'));
@@ -89,7 +106,7 @@ export const getUserWeights = () =>
   api.get('/weights/user')
     .catch(error => handleApiError(error, 'Failed to fetch user weights'));
 
-// Dashboard stats with retry logic
+// Dashboard endpoints
 export const getDashboardStats = async () => {
   try {
     const response = await api.get('/dashboard/stats');
