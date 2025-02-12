@@ -13,24 +13,26 @@ const authRoutes = require('./routes/authRoutes');
 const goalRoutes = require('./routes/goalRoutes');
 const progressRoutes = require('./routes/progressRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
-const fastRoutes  = require('./routes/fastRoutes')
+const fastRoutes = require('./routes/fastRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 // CORS configuration
 const allowedOrigins = [
-  
   'http://localhost:3000',
-
+  process.env.FRONTEND_URL,
   ...process.env.ADDITIONAL_ORIGINS ? process.env.ADDITIONAL_ORIGINS.split(',') : []
-];
+].filter(Boolean);
 
 const corsOptions = {
   origin: function (origin, callback) {
     if (!origin) return callback(null, true);
     
-    if (allowedOrigins.includes(origin) || origin.includes('vercel.app') || origin.includes('localhost')) {
+    if (allowedOrigins.includes(origin) || 
+        origin.includes('vercel.app') || 
+        origin.includes('onrender.com') || 
+        origin.includes('localhost')) {
       callback(null, true);
     } else {
       callback(new Error(`Origin ${origin} not allowed by CORS`));
@@ -43,13 +45,13 @@ const corsOptions = {
     'Authorization',
     'X-Requested-With',
     'Accept',
-    'X-Request-ID'  // Add this to match your frontend header
+    'X-Request-ID'
   ],
   exposedHeaders: ['Set-Cookie', 'Authorization'],
   optionsSuccessStatus: 204
 };
 
-// Apply CORS and other middlewares
+// Apply middlewares
 app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -58,7 +60,31 @@ app.use(cookieParser());
 // Connect to the database
 connectDB();
 
+// API routes
+app.use('/api/auth', authRoutes);
+app.use('/api/fasts', authMiddleware, fastRoutes);
 
+app.use('/api/goals', authMiddleware, goalRoutes);
+app.use('/api/progress', authMiddleware, progressRoutes);
+app.use('/api/dashboard', authMiddleware, dashboardRoutes);
+
+// Health check route
+app.get('/api/health', (req, res) => {
+  res.json({ 
+    status: 'Backend server is live',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV
+  });
+});
+
+// Root route handler
+app.get('/', (req, res) => {
+  res.json({
+    message: 'Backend server is live',
+    version: '1.0.0',
+    endpoints: '/api'
+  });
+});
 
 // Global error handler for JSON parsing errors
 app.use((err, req, res, next) => {
@@ -71,32 +97,6 @@ app.use((err, req, res, next) => {
   }
   next(err);
 });
-
-// Health check route
-app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'healthy',
-    timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV
-  });
-});
-
-// API routes
-app.use('/api/auth', authRoutes);
-app.use('/api/fasts', authMiddleware, fastRoutes);
-
-app.use('/api/goals', authMiddleware, goalRoutes);
-app.use('/api/progress', authMiddleware, progressRoutes);
-app.use('/api/dashboard', authMiddleware, dashboardRoutes);
-
-
-// Serve static files in production
-if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, 'client', 'build')));
-  app.get('*', (req, res) => {
-    res.sendFile(path.resolve(__dirname, 'client', 'build', 'index.html'));
-  });
-}
 
 // Global error handling middleware
 app.use((err, req, res, next) => {
