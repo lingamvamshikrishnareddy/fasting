@@ -17,24 +17,33 @@ function Register() {
   }, [isAuthenticated, navigate]);
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-
+  e.preventDefault();
+  setError('');
+  
+  try {
     if (!username || !email || !password) {
       setError('Please fill in all fields');
       return;
     }
-
+    
     if (password.length < 6) {
       setError('Password must be at least 6 characters long');
       return;
     }
 
     const result = await register(username, email, password);
-    if (!result.success) {
+    
+    if (result.success) {
+      // Only navigate after successful registration
+      navigate('/dashboard');
+    } else {
       setError(result.error || 'Registration failed');
     }
-  };
+  } catch (err) {
+    setError(err.message || 'An unexpected error occurred');
+  }
+};
+
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
