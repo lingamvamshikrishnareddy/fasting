@@ -30,19 +30,19 @@ class APIError extends Error {
 // Logger utility with log levels
 const logger = {
   level: process.env.NODE_ENV === 'development' ? 'debug' : 'error',
-  
+
   debug: (...args) => {
     if (logger.level === 'debug') console.debug('🔍 [DEBUG]:', ...args);
   },
-  
+
   info: (...args) => {
     if (['debug', 'info'].includes(logger.level)) console.log('ℹ️ [INFO]:', ...args);
   },
-  
+
   warn: (...args) => {
     if (['debug', 'info', 'warn'].includes(logger.level)) console.warn('⚠️ [WARN]:', ...args);
   },
-  
+
   error: (...args) => {
     console.error('❌ [ERROR]:', ...args);
   }
@@ -51,7 +51,7 @@ const logger = {
 // API client configuration
 const createAPIClient = () => {
   const baseURL = API_URL.endsWith('/') ? API_URL.slice(0, -1) : API_URL;
-  
+
   const client = axios.create({
     baseURL,
     timeout: DEFAULT_TIMEOUT,
@@ -66,12 +66,10 @@ const createAPIClient = () => {
       if (token) {
         config.headers['Authorization'] = `Bearer ${token}`;
       }
-      
-      // Update to match the allowed header case in backend
+
       config.headers['X-Request-ID'] = crypto.randomUUID();
-      
       config.url = config.url.startsWith('/') ? config.url : `/${config.url}`;
-      
+
       logger.debug('API Request:', {
         requestId: config.headers['X-Request-ID'],
         url: `${config.baseURL}${config.url}`,
@@ -81,7 +79,7 @@ const createAPIClient = () => {
         params: config.params,
         timestamp: new Date().toISOString()
       });
-      
+
       return config;
     },
     (error) => {
@@ -215,10 +213,10 @@ const handleResponseError = async (error) => {
 // Enhanced retry mechanism with exponential backoff
 const retryRequest = async (error, retryCount, retryDelay, attempt = 0) => {
   if (attempt >= retryCount) throw error;
-  
+
   const delay = retryDelay * Math.pow(2, attempt);
   logger.info(`Retrying request (attempt ${attempt + 1}/${retryCount}) after ${delay}ms`);
-  
+
   await new Promise((resolve) => setTimeout(resolve, delay));
   return api(error.config);
 };
@@ -247,7 +245,7 @@ const handleAPIError = async (error, customMessage, options = {}) => {
 };
 
 // Enhanced endpoint factory with retry options
-const createEndpoint = (method, path, errorMessage, options = {}) => 
+const createEndpoint = (method, path, errorMessage, options = {}) =>
   async (data = {}, config = {}) => {
     try {
       const response = await api[method](path, data, { ...config, ...options });
@@ -271,34 +269,13 @@ export const auth = {
   }),
 };
 
-
 export const fasts = {
-  getAll: async () => {
-    const response = await api.get('/fasts');
-    return response.data;
-  },
-
-  getCurrentFast: async () => {
-    const response = await api.get('/fasts/current');
-    return response.data;
-  },
-
-  create: async (data) => {
-    const response = await api.post('/fasts', data);
-    return response.data;
-  },
-
-  end: async (id) => {
-    const response = await api.post(`/fasts/${id}/end`);
-    return response.data;
-  },
-
-  getStats: async () => {
-    const response = await api.get('/fasts/stats');
-    return response.data;
-  }
+  getAll: createEndpoint('get', '/fasts', 'Failed to fetch fasts'),
+  getCurrentFast: createEndpoint('get', '/fasts/current', 'Failed to fetch current fast'),
+  create: createEndpoint('post', '/fasts', 'Failed to create fast'),
+  end: createEndpoint('post', '/fasts/:id/end', 'Failed to end fast'),
+  getStats: createEndpoint('get', '/fasts/stats', 'Failed to fetch fasting stats'),
 };
-
 
 export const weights = {
   add: createEndpoint('post', '/weights/add', 'Failed to add weight'),
