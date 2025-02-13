@@ -57,12 +57,9 @@ const FastingTimer = () => {
       throw new Error('No active fast found');
     }
 
-    // Send the actual fastId instead of :id
-    const response = await api.post(`/fasts/${fastState.fastId}/end`, {
-      endTime: new Date().toISOString()
-    });
-
-    if (response.data.success) {
+    const response = await fasts.end(fastState.fastId);
+    
+    if (response.success) {
       setFastState(prev => ({
         ...prev,
         isRunning: false,
@@ -70,8 +67,6 @@ const FastingTimer = () => {
         elapsedTime: 0,
         fastId: null
       }));
-    } else {
-      throw new Error('Failed to end fast');
     }
   } catch (err) {
     setError(err.message || 'Failed to end fast');
