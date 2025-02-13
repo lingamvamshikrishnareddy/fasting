@@ -50,14 +50,18 @@ const logger = {
 
 // API client configuration
 const createAPIClient = () => {
-  const baseURL = API_URL.endsWith('/') ? API_URL.slice(0, -1) : API_URL;
+  const baseURL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+  
+  // Ensure baseURL ends with /api
+  const normalizedBaseURL = baseURL.endsWith('/api') ? baseURL : `${baseURL}/api`;
 
   const client = axios.create({
-    baseURL,
+    baseURL: normalizedBaseURL,
     timeout: DEFAULT_TIMEOUT,
     headers: { 'Content-Type': 'application/json' },
     withCredentials: true,
   });
+  
 
   // Request interceptor with enhanced logging and error handling
   client.interceptors.request.use(
@@ -260,10 +264,10 @@ const api = createAPIClient();
 
 // API endpoints with retry options
 export const auth = {
-  register: createEndpoint('post', '/auth/register', 'Registration failed'),
-  login: createEndpoint('post', '/auth/login', 'Login failed'),
-  logout: createEndpoint('post', '/auth/logout', 'Logout failed'),
-  getCurrentUser: createEndpoint('get', '/auth/user', 'Failed to fetch user data', {
+  register: createEndpoint('post', 'auth/register', 'Registration failed'), // Remove leading slash
+  login: createEndpoint('post', 'auth/login', 'Login failed'),
+  logout: createEndpoint('post', 'auth/logout', 'Logout failed'),
+  getCurrentUser: createEndpoint('get', 'auth/user', 'Failed to fetch user data', {
     retryCount: 2,
     retryDelay: 1000
   }),
