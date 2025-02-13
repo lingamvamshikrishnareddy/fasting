@@ -51,12 +51,18 @@ const FastingTimer = () => {
   };
 
   const handleStop = async () => {
-    try {
-      setError(null);
-      if (fastState.fastId) {
-        await fasts.end(fastState.fastId);
-      }
-      
+  try {
+    setError(null);
+    if (!fastState.fastId) {
+      throw new Error('No active fast found');
+    }
+
+    // Send the actual fastId instead of :id
+    const response = await api.post(`/fasts/${fastState.fastId}/end`, {
+      endTime: new Date().toISOString()
+    });
+
+    if (response.data.success) {
       setFastState(prev => ({
         ...prev,
         isRunning: false,
@@ -64,10 +70,14 @@ const FastingTimer = () => {
         elapsedTime: 0,
         fastId: null
       }));
-    } catch (err) {
-      setError(err.message || 'Failed to end fast');
+    } else {
+      throw new Error('Failed to end fast');
     }
-  };
+  } catch (err) {
+    setError(err.message || 'Failed to end fast');
+    console.error('Error ending fast:', err);
+  }
+};
 
   useEffect(() => {
     let timer;
