@@ -273,12 +273,50 @@ export const auth = {
   }),
 };
 
+// Enhanced fasts endpoints with proper error handling and retry options
 export const fasts = {
-  getAll: createEndpoint('get', '/fasts', 'Failed to fetch fasts'),
-  getCurrentFast: createEndpoint('get', '/fasts/current', 'Failed to fetch current fast'),
-  create: createEndpoint('post', '/fasts', 'Failed to create fast'),
-  end: createEndpoint('post', '/fasts/:id/end', 'Failed to end fast'),
-  getStats: createEndpoint('get', '/fasts/stats', 'Failed to fetch fasting stats'),
+  getAll: createEndpoint('get', '/fasts', 'Failed to fetch fasts', {
+    retryCount: 2,
+    retryDelay: 1000
+  }),
+
+  getCurrentFast: createEndpoint('get', '/fasts/current', 'Failed to fetch current fast', {
+    retryCount: 1,
+    retryDelay: 500
+  }),
+
+  create: createEndpoint('post', '/fasts', 'Failed to create fast', {
+    retryCount: 0  // Don't retry creates to avoid duplicates
+  }),
+
+  end: async (id) => {
+    try {
+      if (!id) {
+        throw new Error('Fast ID is required');
+      }
+      const response = await api.post(`/fasts/${id}/end`, {
+        endTime: new Date().toISOString()
+      });
+      return response.data;
+    } catch (error) {
+      logger.error('Error ending fast:', {
+        fastId: id,
+        error: error.message,
+        stack: error.stack
+      });
+      throw new APIError(
+        error.response?.data?.message || 'Failed to end fast',
+        error.response?.status,
+        ERROR_CODES.UNKNOWN_ERROR,
+        { originalError: error }
+      );
+    }
+  },
+
+  getStats: createEndpoint('get', '/fasts/stats', 'Failed to fetch fasting stats', {
+    retryCount: 2,
+    retryDelay: 1000
+  })
 };
 
 export const weights = {
