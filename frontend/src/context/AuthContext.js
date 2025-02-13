@@ -84,45 +84,48 @@ export const AuthProvider = ({ children }) => {
   };
 
   const register = async (username, email, password) => {
-    try {
-      setError(null);
-      setLoading(true);
+  try {
+    setError(null);
+    setLoading(true);
 
-      // Validate input
-      if (!username || !email || !password) {
-        throw new Error('All fields are required');
-      }
-
-      // Format the data
-      const formattedData = {
-        username: username.trim(),
-        email: email.trim().toLowerCase(),
-        password: password
-      };
-
-      const response = await api.post('/auth/register', formattedData);
-
-      if (response.data && response.data.token) {
-        localStorage.setItem('token', response.data.token);
-        api.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`;
-        setUser(response.data.user);
-        setShowAuthModal(false);
-        navigate('/dashboard');
-        return { success: true };
-      } else {
-        throw new Error('Invalid response from server');
-      }
-    } catch (error) {
-      console.error('Registration error:', error);
-      const errorMessage = error.response?.data?.message || 
-                          error.message || 
-                          'An error occurred during registration';
-      setError(errorMessage);
-      return { success: false, error: errorMessage };
-    } finally {
-      setLoading(false);
+    // Validate input
+    if (!username || !email || !password) {
+      throw new Error('All fields are required');
     }
-  };
+
+    const formattedData = {
+      username: username.trim(),
+      email: email.trim().toLowerCase(),
+      password: password
+    };
+
+    const response = await api.post('/auth/register', formattedData);
+
+    if (response.data && response.data.token) {
+      // First set the token and auth headers
+      localStorage.setItem('token', response.data.token);
+      api.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`;
+      
+      // Then update the user state
+      setUser(response.data.user);
+      
+      // Finally close modal and return success
+      setShowAuthModal(false);
+      return { success: true, user: response.data.user };
+    } else {
+      throw new Error('Invalid response from server');
+    }
+  } catch (error) {
+    console.error('Registration error:', error);
+    const errorMessage = error.response?.data?.message || 
+                        error.message || 
+                        'An error occurred during registration';
+    setError(errorMessage);
+    return { success: false, error: errorMessage };
+  } finally {
+    setLoading(false);
+  }
+};
 
   const logout = async () => {
     try {
