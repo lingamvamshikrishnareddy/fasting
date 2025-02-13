@@ -42,6 +42,7 @@ const register = async (req, res) => {
     const validationErrors = validateRegistration(req.body);
     if (validationErrors.length > 0) {
       return res.status(400).json({
+        status: 'error',
         message: 'Validation failed',
         errors: validationErrors
       });
@@ -49,14 +50,18 @@ const register = async (req, res) => {
 
     const { username, email, password } = req.body;
 
-    // Check for existing user
+    // Check for existing user with case-insensitive email comparison
     const existingUser = await User.findOne({
-      $or: [{ email: email.toLowerCase() }, { username }]
+      $or: [
+        { email: new RegExp('^' + email + '$', 'i') },
+        { username: new RegExp('^' + username + '$', 'i') }
+      ]
     });
 
     if (existingUser) {
       return res.status(400).json({
-        message: existingUser.email === email.toLowerCase() ? 
+        status: 'error',
+        message: existingUser.email.toLowerCase() === email.toLowerCase() ? 
           'Email already registered' : 
           'Username already taken'
       });
@@ -66,7 +71,7 @@ const register = async (req, res) => {
     const user = new User({
       username,
       email: email.toLowerCase(),
-      password // Password will be hashed by the pre-save middleware
+      password
     });
 
     await user.save();
@@ -76,12 +81,14 @@ const register = async (req, res) => {
 
     // Send response
     res.status(201).json({
-      success: true,
-      token,
-      user: {
-        id: user._id,
-        username: user.username,
-        email: user.email
+      status: 'success',
+      data: {
+        token,
+        user: {
+          id: user._id,
+          username: user.username,
+          email: user.email
+        }
       }
     });
 
@@ -94,11 +101,13 @@ const register = async (req, res) => {
 
     if (error.code === 11000) {
       return res.status(400).json({
+        status: 'error',
         message: 'This email or username is already registered'
       });
     }
 
     res.status(500).json({
+      status: 'error',
       message: 'Registration failed. Please try again later.',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
